@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { SessionSummary } from '@/types/api'
 
 type SessionGroup = {
@@ -22,14 +22,18 @@ function groupSessionsByDirectory(sessions: SessionSummary[]): SessionGroup[] {
 
     return Array.from(groups.entries())
         .map(([directory, groupSessions]) => {
-            const sortedSessions = [...groupSessions].sort((a, b) => b.updatedAt - a.updatedAt)
+            const sortedSessions = [...groupSessions].sort((a, b) => {
+                const rankA = a.active ? (a.pendingRequestsCount > 0 ? 0 : 1) : 2
+                const rankB = b.active ? (b.pendingRequestsCount > 0 ? 0 : 1) : 2
+                if (rankA !== rankB) return rankA - rankB
+                return b.updatedAt - a.updatedAt
+            })
             const latestUpdatedAt = groupSessions.reduce(
                 (max, s) => (s.updatedAt > max ? s.updatedAt : max),
                 -Infinity
             )
             const hasActiveSession = groupSessions.some(s => s.active)
-            const parts = directory.split('/').filter(Boolean)
-            const displayName = parts.length > 0 ? parts[parts.length - 1] : directory
+            const displayName = directory
 
             return { directory, displayName, sessions: sortedSessions, latestUpdatedAt, hasActiveSession }
         })
@@ -94,9 +98,9 @@ function ChevronIcon(props: { className?: string; collapsed?: boolean }) {
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
-            className={`${props.className ?? ''} transition-transform duration-200 ${props.collapsed ? '-rotate-90' : ''}`}
+            className={`${props.className ?? ''} transition-transform duration-200 ${props.collapsed ? '' : 'rotate-90'}`}
         >
-            <polyline points="6 9 12 15 18 9" />
+            <polyline points="9 18 15 12 9 6" />
         </svg>
     )
 }
@@ -145,13 +149,6 @@ function formatRelativeTime(value: number): string | null {
     return new Date(ms).toLocaleDateString()
 }
 
-function getLastSeenLabel(session: SessionSummary): string | null {
-    if (session.active) return null
-    const lastSeen = formatRelativeTime(session.activeAt ?? session.updatedAt)
-    if (!lastSeen) return null
-    return `last seen ${lastSeen}`
-}
-
 function SessionItem(props: {
     session: SessionSummary
     onSelect: (sessionId: string) => void
@@ -166,10 +163,11 @@ function SessionItem(props: {
         >
             <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
-                    <span
-                        className={`h-2 w-2 rounded-full ${s.active ? 'bg-[var(--app-badge-success-text)]' : 'bg-[var(--app-hint)]'}`}
-                        aria-hidden="true"
-                    />
+                    <span className="flex h-4 w-4 items-center justify-center" aria-hidden="true">
+                        <span
+                            className={`h-2 w-2 rounded-full ${s.active ? 'bg-[var(--app-badge-success-text)]' : 'bg-[var(--app-hint)]'}`}
+                        />
+                    </span>
                     <div className="truncate text-sm font-medium">
                         {getSessionTitle(s)}
                     </div>
@@ -206,11 +204,6 @@ function SessionItem(props: {
                 {s.metadata?.worktree?.branch ? (
                     <span>worktree: {s.metadata.worktree.branch}</span>
                 ) : null}
-                {(() => {
-                    const lastSeen = getLastSeenLabel(s)
-                    if (!lastSeen) return null
-                    return <span>{lastSeen}</span>
-                })()}
             </div>
         </button>
     )
@@ -225,12 +218,20 @@ export function SessionList(props: {
     renderHeader?: boolean
 }) {
     const { renderHeader = true } = props
-    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
-
     const groups = useMemo(
         () => groupSessionsByDirectory(props.sessions),
         [props.sessions]
     )
+    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
+        const initial = new Set<string>()
+        for (const group of groups) {
+            if (!group.hasActiveSession) {
+                initial.add(group.directory)
+            }
+        }
+        return initial
+    })
+    const knownGroupsRef = useRef<Set<string>>(new Set(groups.map(group => group.directory)))
 
     const toggleGroup = (directory: string) => {
         setCollapsedGroups(prev => {
@@ -243,6 +244,23 @@ export function SessionList(props: {
             return next
         })
     }
+
+    useEffect(() => {
+        let shouldUpdate = false
+        setCollapsedGroups(prev => {
+            const next = new Set(prev)
+            for (const group of groups) {
+                if (!knownGroupsRef.current.has(group.directory)) {
+                    knownGroupsRef.current.add(group.directory)
+                    if (!group.hasActiveSession) {
+                        next.add(group.directory)
+                        shouldUpdate = true
+                    }
+                }
+            }
+            return shouldUpdate ? next : prev
+        })
+    }, [groups])
 
     return (
         <div className="mx-auto w-full max-w-content flex flex-col">
@@ -277,13 +295,7 @@ export function SessionList(props: {
                                     collapsed={isCollapsed}
                                 />
                                 <div className="flex items-center gap-2 min-w-0 flex-1">
-                                    {group.hasActiveSession ? (
-                                        <span
-                                            className="h-2 w-2 rounded-full bg-[var(--app-badge-success-text)]"
-                                            aria-hidden="true"
-                                        />
-                                    ) : null}
-                                    <span className="truncate font-medium text-sm">
+                                    <span className="truncate font-medium text-sm" title={group.displayName}>
                                         {group.displayName}
                                     </span>
                                     <span className="text-xs text-[var(--app-hint)]">
