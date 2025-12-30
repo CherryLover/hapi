@@ -21,7 +21,7 @@ function groupSessionsByDirectory(sessions: SessionSummary[]): SessionGroup[] {
     const groups = new Map<string, SessionSummary[]>()
 
     sessions.forEach(session => {
-        const path = session.metadata?.path ?? 'Other'
+        const path = session.metadata?.worktree?.basePath ?? session.metadata?.path ?? 'Other'
         if (!groups.has(path)) {
             groups.set(path, [])
         }
