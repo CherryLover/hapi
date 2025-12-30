@@ -9,6 +9,14 @@ type SessionGroup = {
     hasActiveSession: boolean
 }
 
+function getGroupDisplayName(directory: string): string {
+    if (directory === 'Other') return directory
+    const parts = directory.split(/[\\/]+/).filter(Boolean)
+    if (parts.length === 0) return directory
+    if (parts.length === 1) return parts[0]
+    return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`
+}
+
 function groupSessionsByDirectory(sessions: SessionSummary[]): SessionGroup[] {
     const groups = new Map<string, SessionSummary[]>()
 
@@ -33,7 +41,7 @@ function groupSessionsByDirectory(sessions: SessionSummary[]): SessionGroup[] {
                 -Infinity
             )
             const hasActiveSession = groupSessions.some(s => s.active)
-            const displayName = directory
+            const displayName = getGroupDisplayName(directory)
 
             return { directory, displayName, sessions: sortedSessions, latestUpdatedAt, hasActiveSession }
         })
@@ -199,7 +207,12 @@ function SessionItem(props: {
                 </div>
             ) : null}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--app-hint)]">
-                <span>❖ {getAgentLabel(s)}</span>
+                <span className="inline-flex items-center gap-2">
+                    <span className="flex h-4 w-4 items-center justify-center" aria-hidden="true">
+                        ❖
+                    </span>
+                    {getAgentLabel(s)}
+                </span>
                 <span>model: {getModelLabel(s)}</span>
                 {s.metadata?.worktree?.branch ? (
                     <span>worktree: {s.metadata.worktree.branch}</span>
@@ -222,43 +235,36 @@ export function SessionList(props: {
         () => groupSessionsByDirectory(props.sessions),
         [props.sessions]
     )
-    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
-        const initial = new Set<string>()
-        for (const group of groups) {
-            if (!group.hasActiveSession) {
-                initial.add(group.directory)
-            }
-        }
-        return initial
-    })
-    const knownGroupsRef = useRef<Set<string>>(new Set(groups.map(group => group.directory)))
+    const [collapseOverrides, setCollapseOverrides] = useState<Map<string, boolean>>(
+        () => new Map()
+    )
+    const isGroupCollapsed = (group: SessionGroup): boolean => {
+        const override = collapseOverrides.get(group.directory)
+        if (override !== undefined) return override
+        return !group.hasActiveSession
+    }
 
-    const toggleGroup = (directory: string) => {
-        setCollapsedGroups(prev => {
-            const next = new Set(prev)
-            if (next.has(directory)) {
-                next.delete(directory)
-            } else {
-                next.add(directory)
-            }
+    const toggleGroup = (directory: string, isCollapsed: boolean) => {
+        setCollapseOverrides(prev => {
+            const next = new Map(prev)
+            next.set(directory, !isCollapsed)
             return next
         })
     }
 
     useEffect(() => {
-        let shouldUpdate = false
-        setCollapsedGroups(prev => {
-            const next = new Set(prev)
-            for (const group of groups) {
-                if (!knownGroupsRef.current.has(group.directory)) {
-                    knownGroupsRef.current.add(group.directory)
-                    if (!group.hasActiveSession) {
-                        next.add(group.directory)
-                        shouldUpdate = true
-                    }
+        setCollapseOverrides(prev => {
+            if (prev.size === 0) return prev
+            const next = new Map(prev)
+            const knownGroups = new Set(groups.map(group => group.directory))
+            let changed = false
+            for (const directory of next.keys()) {
+                if (!knownGroups.has(directory)) {
+                    next.delete(directory)
+                    changed = true
                 }
             }
-            return shouldUpdate ? next : prev
+            return changed ? next : prev
         })
     }, [groups])
 
@@ -282,12 +288,12 @@ export function SessionList(props: {
 
             <div className="flex flex-col">
                 {groups.map((group) => {
-                    const isCollapsed = collapsedGroups.has(group.directory)
+                    const isCollapsed = isGroupCollapsed(group)
                     return (
                         <div key={group.directory} className="border-b border-[var(--app-divider)]">
                             <button
                                 type="button"
-                                onClick={() => toggleGroup(group.directory)}
+                                onClick={() => toggleGroup(group.directory, isCollapsed)}
                                 className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-[var(--app-secondary-bg)]"
                             >
                                 <ChevronIcon
@@ -295,10 +301,10 @@ export function SessionList(props: {
                                     collapsed={isCollapsed}
                                 />
                                 <div className="flex items-center gap-2 min-w-0 flex-1">
-                                    <span className="truncate font-medium text-sm" title={group.displayName}>
+                                    <span className="font-medium text-sm break-words" title={group.directory}>
                                         {group.displayName}
                                     </span>
-                                    <span className="text-xs text-[var(--app-hint)]">
+                                    <span className="shrink-0 text-xs text-[var(--app-hint)]">
                                         ({group.sessions.length})
                                     </span>
                                 </div>
