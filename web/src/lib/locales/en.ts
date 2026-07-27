@@ -43,7 +43,6 @@ export default {
   'login.footer.copyright': '©',
 
   // Sessions page
-  'sessions.count': '{n} sessions in {m} projects',
   'sessions.new': 'New Session',
   'sessions.empty.title': 'No sessions yet',
   'sessions.empty.hint': 'Start a coding session in any folder under your workspace, or browse the tree first.',
@@ -51,7 +50,6 @@ export default {
   'sessions.empty.browse': 'Browse workspace',
   'sessions.search.placeholder': 'Search sessions…',
   'sessions.search.clear': 'Clear search',
-  'sessions.search.count': '{n} of {total} sessions',
   'sessions.search.noResults': 'No sessions match your filters.',
   'sessions.timeFilter.label': 'Filter sessions by last activity',
   'sessions.timeFilter.pickStart': 'Select start date',
@@ -64,6 +62,8 @@ export default {
   'sessions.group.showMore': 'Show {n} more',
   'sessions.group.showLess': 'Show less',
   'sessions.group.new': 'New session in this directory',
+  'sessions.machineFilter.label': 'Filter sessions by machine',
+  'sessions.machineFilter.all': 'All',
   'codexSync.tooltip': 'Import sessions from Codex into Hapi',
   'codexSync.newSessionAction': 'Import Codex history',
   'codexSync.confirm.title': 'Import Codex sessions',

@@ -43,7 +43,6 @@ export default {
   'login.footer.copyright': '©',
 
   // Sessions page
-  'sessions.count': '{n} 个会话，{m} 个项目',
   'sessions.new': '新建会话',
   'sessions.empty.title': '还没有会话',
   'sessions.empty.hint': '在 workspace 下任意目录启动一个会话，或先浏览目录树看看。',
@@ -51,7 +50,6 @@ export default {
   'sessions.empty.browse': '浏览 workspace',
   'sessions.search.placeholder': '搜索会话…',
   'sessions.search.clear': '清除搜索',
-  'sessions.search.count': '{n} / {total} 个会话',
   'sessions.search.noResults': '没有符合筛选条件的会话。',
   'sessions.timeFilter.label': '按最后活动时间筛选会话',
   'sessions.timeFilter.pickStart': '选择开始日期',
@@ -64,6 +62,8 @@ export default {
   'sessions.group.showMore': '再显示 {n} 个',
   'sessions.group.showLess': '收起',
   'sessions.group.new': '在此目录新建会话',
+  'sessions.machineFilter.label': '按机器筛选会话',
+  'sessions.machineFilter.all': '全部',
   'codexSync.tooltip': '从 Codex 导入会话到 Hapi',
   'codexSync.newSessionAction': '导入 Codex 历史',
   'codexSync.confirm.title': '导入 Codex 会话',
