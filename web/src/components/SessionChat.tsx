@@ -1192,6 +1192,8 @@ function SessionChatInner(props: SessionChatProps) {
     const runtime = useHappyRuntime({
         session: props.session,
         blocks: visibleBlocks,
+        messagesVersion: props.messagesVersion,
+        historyVersion: props.historyVersion,
         isSending: props.isSending,
         isRunning: props.session.thinking || hasRunningChildAgent,
         onSendMessage: handleSend,
