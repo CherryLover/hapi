@@ -5,15 +5,17 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { Store } from './index'
 
-describe('Store V12→V13 migration: message_epochs', () => {
-    it('fresh DB has message_epochs table', () => {
+describe('Store V12/V13→V14 schema reconciliation', () => {
+    it('fresh DB has both reconciled tables', () => {
         const store = new Store(':memory:')
         expect(tableExists(store, 'message_epochs')).toBe(true)
+        expect(tableExists(store, 'session_scratchlist')).toBe(true)
+        expect(getUserVersion(store)).toBe(14)
         store.close()
     })
 
-    it('V12 DB migrates to V13 and preserves existing messages', () => {
-        const dir = mkdtempSync(join(tmpdir(), 'hapi-migration-v13-test-'))
+    it('scratchlist V12 DB migrates to V14 and preserves existing messages', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'hapi-migration-v14-test-'))
         const dbPath = join(dir, 'test.db')
         let store: Store | undefined
         try {
@@ -31,7 +33,46 @@ describe('Store V12→V13 migration: message_epochs', () => {
 
             store = new Store(dbPath)
             expect(tableExists(store, 'message_epochs')).toBe(true)
+            expect(tableExists(store, 'session_scratchlist')).toBe(true)
+            expect(getUserVersion(store)).toBe(14)
             expect(store.messages.getMessageEpoch('session-1')).toBe(0)
+            expect(store.messages.getMessages('session-1')).toHaveLength(1)
+        } finally {
+            store?.close()
+            rmSync(dir, { recursive: true, force: true })
+        }
+    })
+
+    it.each([
+        ['V12', 12],
+        ['V13', 13]
+    ] as const)('repairs divergent %s DB missing session_scratchlist', (_label, version) => {
+        const dir = mkdtempSync(join(tmpdir(), `hapi-migration-v${version}-repair-test-`))
+        const dbPath = join(dir, 'test.db')
+        let store: Store | undefined
+        try {
+            const db = new Database(dbPath, { create: true, readwrite: true, strict: true })
+            db.exec('PRAGMA journal_mode = WAL')
+            db.exec('PRAGMA foreign_keys = ON')
+            createV12Schema(db)
+            db.exec(`
+                DROP TABLE session_scratchlist;
+                CREATE TABLE message_epochs (
+                    session_id TEXT PRIMARY KEY,
+                    epoch INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+                );
+                INSERT INTO sessions (id, created_at, updated_at) VALUES ('session-1', 1, 1);
+                INSERT INTO messages (id, session_id, content, created_at, seq, invoked_at)
+                VALUES ('message-1', 'session-1', '{}', 1, 1, 1);
+                PRAGMA user_version = ${version};
+            `)
+            db.close()
+
+            store = new Store(dbPath)
+            expect(tableExists(store, 'message_epochs')).toBe(true)
+            expect(tableExists(store, 'session_scratchlist')).toBe(true)
+            expect(getUserVersion(store)).toBe(14)
             expect(store.messages.getMessages('session-1')).toHaveLength(1)
         } finally {
             store?.close()
@@ -46,6 +87,12 @@ function tableExists(store: Store, name: string): boolean {
         "SELECT name FROM sqlite_master WHERE type='table' AND name=?"
     ).get(name) as { name: string } | null
     return row !== null
+}
+
+function getUserVersion(store: Store): number {
+    const db: Database = (store as unknown as { db: Database }).db
+    const row = db.prepare('PRAGMA user_version').get() as { user_version: number }
+    return row.user_version
 }
 
 function createV12Schema(db: Database): void {

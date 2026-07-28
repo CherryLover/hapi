@@ -29,7 +29,7 @@ export { ScratchlistStore } from './scratchlistStore'
 export { SessionStore } from './sessionStore'
 export { UserStore } from './userStore'
 
-const SCHEMA_VERSION: number = 13
+const SCHEMA_VERSION: number = 14
 const REQUIRED_TABLES = [
     'sessions',
     'machines',
@@ -140,6 +140,7 @@ export class Store {
             10: () => this.migrateFromV10ToV11(),
             11: () => this.migrateFromV11ToV12(),
             12: () => this.migrateFromV12ToV13(),
+            13: () => this.migrateFromV13ToV14(),
         })
 
         if (currentVersion === 0) {
@@ -528,6 +529,9 @@ export class Store {
     }
 
     private migrateFromV12ToV13(): void {
+        // Two development branches previously used schema v12 for different
+        // tables. Reconcile both shapes before advancing the version.
+        this.migrateFromV11ToV12()
         this.db.exec(`
             CREATE TABLE IF NOT EXISTS message_epochs (
                 session_id TEXT PRIMARY KEY,
@@ -535,6 +539,12 @@ export class Store {
                 FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
             )
         `)
+    }
+
+    private migrateFromV13ToV14(): void {
+        // Repair v13 databases produced before the divergent v12 migrations
+        // were reconciled. Both underlying migrations are idempotent.
+        this.migrateFromV12ToV13()
     }
 
     private getSessionColumnNames(): Set<string> {

@@ -32,7 +32,7 @@ describe('Store V11→V12 migration: session_scratchlist table', () => {
         expect(rows).toHaveLength(1)
     })
 
-    it('V11 DB migrates through V13 via Store: session_scratchlist created', () => {
+    it('V11 DB migrates through V14 via Store: session_scratchlist created', () => {
         const dir = mkdtempSync(join(tmpdir(), 'hapi-migration-v12-test-'))
         const dbPath = join(dir, 'test.db')
         let store: Store | undefined
@@ -61,7 +61,7 @@ describe('Store V11→V12 migration: session_scratchlist table', () => {
         }
     })
 
-    it('V9 DB migrates through V13 (multi-hop service_tier + fcm_devices + scratchlist)', () => {
+    it('V9 DB migrates through V14 (multi-hop service_tier + fcm_devices + scratchlist)', () => {
         const dir = mkdtempSync(join(tmpdir(), 'hapi-migration-v9-to-v12-'))
         const dbPath = join(dir, 'test.db')
         let store: Store | undefined
