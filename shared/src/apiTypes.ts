@@ -78,9 +78,16 @@ export type SessionResponse = { session: Session }
 export type MessagesResponse = {
     messages: DecryptedMessage[]
     page: {
+        direction: 'latest' | 'before' | 'after'
         limit: number
+        epoch: number
+        reset: boolean
         nextBeforeSeq: number | null
         nextBeforeAt: number | null
+        nextAfterSeq: number | null
+        nextAfterAt: number | null
+        snapshotHeadSeq: number | null
+        snapshotHeadAt: number | null
         hasMore: boolean
     }
 }
@@ -330,10 +337,36 @@ export const MessagesQuerySchema = z.object({
     limit: z.coerce.number().int().min(1).max(200).optional(),
     beforeSeq: z.coerce.number().int().min(1).optional(),
     beforeAt: z.coerce.number().int().min(0).optional(),
-}).refine((data) => (data.beforeAt === undefined) === (data.beforeSeq === undefined), {
-    message: 'beforeAt and beforeSeq must be provided together',
-    path: ['beforeAt'],
+    afterSeq: z.coerce.number().int().min(1).optional(),
+    afterAt: z.coerce.number().int().min(0).optional(),
+    untilSeq: z.coerce.number().int().min(1).optional(),
+    untilAt: z.coerce.number().int().min(0).optional(),
+    epoch: z.coerce.number().int().min(0).optional(),
 })
+    .refine((data) => (data.beforeAt === undefined) === (data.beforeSeq === undefined), {
+        message: 'beforeAt and beforeSeq must be provided together',
+        path: ['beforeAt'],
+    })
+    .refine((data) => (data.afterAt === undefined) === (data.afterSeq === undefined), {
+        message: 'afterAt and afterSeq must be provided together',
+        path: ['afterAt'],
+    })
+    .refine((data) => (data.untilAt === undefined) === (data.untilSeq === undefined), {
+        message: 'untilAt and untilSeq must be provided together',
+        path: ['untilAt'],
+    })
+    .refine((data) => data.beforeAt === undefined || data.afterAt === undefined, {
+        message: 'before and after cursors are mutually exclusive',
+        path: ['afterAt'],
+    })
+    .refine((data) => data.untilAt === undefined || data.afterAt !== undefined, {
+        message: 'until cursor requires an after cursor',
+        path: ['untilAt'],
+    })
+    .refine((data) => data.epoch === undefined || data.afterAt !== undefined, {
+        message: 'epoch requires an after cursor',
+        path: ['epoch'],
+    })
 
 export type MessagesQuery = z.infer<typeof MessagesQuerySchema>
 

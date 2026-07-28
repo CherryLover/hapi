@@ -5,10 +5,13 @@ import { I18nProvider } from '@/lib/i18n-context'
 import {
     ConversationOutlinePanel,
     captureScrollAnchor,
+    getHistoryCoverageRetryDelay,
     getScrollIntent,
+    loadOlderUntilViewportCovered,
     locateOutlineTargetMessage,
     prependMissingUserSnapshot,
     restoreScrollAnchor,
+    shouldLoadOlderForViewport,
     shouldCancelInitialScrollSettling,
 } from '@/components/AssistantChat/HappyThread'
 import type { ConversationOutlineItem } from '@/chat/outline'
@@ -227,6 +230,89 @@ describe('scroll anchor helpers', () => {
         expect(viewport.scrollTop).toBe(250)
 
         viewport.remove()
+    })
+})
+
+describe('viewport-driven history coverage', () => {
+    it('recognizes an underfilled viewport and a top sentinel inside the preload margin', () => {
+        expect(shouldLoadOlderForViewport({
+            scrollHeight: 300,
+            clientHeight: 500,
+            viewportTop: 100,
+            sentinelTop: 100,
+            sentinelBottom: 101
+        })).toBe(true)
+        expect(shouldLoadOlderForViewport({
+            scrollHeight: 1_000,
+            clientHeight: 500,
+            viewportTop: 100,
+            sentinelTop: -200,
+            sentinelBottom: -199
+        })).toBe(false)
+    })
+
+    it('loads raw pages until rendered DOM grows by roughly one viewport', async () => {
+        let scrollHeight = 100
+        const growthByPage = [0, 250, 300]
+        const loadOlderPage = vi.fn(async () => {
+            scrollHeight += growthByPage.shift() ?? 0
+            return true
+        })
+
+        const loaded = await loadOlderUntilViewportCovered({
+            hasMoreMessages: () => true,
+            needsCoverage: () => true,
+            getScrollHeight: () => scrollHeight,
+            getClientHeight: () => 500,
+            loadOlderPage,
+            waitForRender: async () => {}
+        })
+
+        expect(loaded).toBe(3)
+        expect(loadOlderPage).toHaveBeenCalledTimes(3)
+        expect(scrollHeight).toBe(650)
+    })
+
+    it('stops when history is exhausted even if raw pages produced no DOM growth', async () => {
+        let remainingPages = 2
+        const loadOlderPage = vi.fn(async () => {
+            remainingPages -= 1
+            return true
+        })
+
+        const loaded = await loadOlderUntilViewportCovered({
+            hasMoreMessages: () => remainingPages > 0,
+            needsCoverage: () => true,
+            getScrollHeight: () => 100,
+            getClientHeight: () => 500,
+            loadOlderPage,
+            waitForRender: async () => {}
+        })
+
+        expect(loaded).toBe(2)
+        expect(loadOlderPage).toHaveBeenCalledTimes(2)
+    })
+
+    it('caps one gesture when pages keep producing no rendered output', async () => {
+        const loadOlderPage = vi.fn(async () => true)
+
+        const loaded = await loadOlderUntilViewportCovered({
+            hasMoreMessages: () => true,
+            needsCoverage: () => true,
+            getScrollHeight: () => 100,
+            getClientHeight: () => 500,
+            loadOlderPage,
+            waitForRender: async () => {},
+            maxPages: 4
+        })
+
+        expect(loaded).toBe(4)
+        expect(loadOlderPage).toHaveBeenCalledTimes(4)
+    })
+
+    it('defers an intersection signal until the initial scroll-settling deadline', () => {
+        expect(getHistoryCoverageRetryDelay(2_800, 1_000)).toBe(1_816)
+        expect(getHistoryCoverageRetryDelay(900, 1_000)).toBe(16)
     })
 })
 

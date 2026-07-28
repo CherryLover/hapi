@@ -19,7 +19,7 @@ import { reduceChatBlocks } from '@/chat/reducer'
 import { reconcileChatBlocks } from '@/chat/reconcile'
 import { buildConversationOutline } from '@/chat/outline'
 import { buildVisibleChatBlocks, isToolGroupBlock, type ToolGroupBlock } from '@/chat/toolGroups'
-import { isQueuedForInvocation, mergeMessages } from '@/lib/messages'
+import { isQueuedForInvocation } from '@/lib/messages'
 import { inactiveSessionCanResume } from '@/lib/sessionResume'
 import {
     getCodexModelReasoningEfforts,
@@ -357,14 +357,9 @@ export function ScratchlistDrawerHost(props: {
 }
 
 export function buildGoalStateMessages(
-    messages: DecryptedMessage[],
-    pendingMessages: DecryptedMessage[] = []
+    messages: DecryptedMessage[]
 ): DecryptedMessage[] {
-    const eligibleMessages = messages.filter((message) => !isUninvokedScheduledMessage(message))
-    const eligiblePendingMessages = pendingMessages.filter((message) => !isUninvokedScheduledMessage(message))
-    return eligiblePendingMessages.length > 0
-        ? mergeMessages(eligibleMessages, eligiblePendingMessages)
-        : eligibleMessages
+    return messages.filter((message) => !isUninvokedScheduledMessage(message))
 }
 
 function hasAbortableAgentRun(blocks: readonly ChatBlock[]): boolean {
@@ -390,24 +385,23 @@ type SessionChatProps = {
     cursorChatOnDisk?: boolean
     reopenDisabledReason?: string
     messages: DecryptedMessage[]
-    pendingMessages?: DecryptedMessage[]
     messagesWarning: string | null
     hasMoreMessages: boolean
-    isLoadingMessages: boolean
+    isSyncingTail: boolean
     isLoadingMoreMessages: boolean
     isSending: boolean
-    pendingCount: number
+    unseenCount: number
     messagesVersion: number
+    historyVersion: number
     onBack: () => void
     onRefresh: () => void
-    onLoadMore: () => Promise<unknown>
+    onLoadMore: () => Promise<boolean>
     // Resolves true when the send was accepted by the underlying mutation, false when
     // pre-mutation guards (no-api / no-session / pending) rejected the call OR async
     // inactive-session resume failed. Composer state that should only be cleared on
     // actual send (pendingSchedule) must await this — see handleSend below.
     onSend: (text: string, attachments?: AttachmentMetadata[], scheduledAt?: number | null) => Promise<boolean>
-    onFlushPending: () => void
-    onAtBottomChange: (atBottom: boolean) => void
+    onViewModeChange: (mode: 'tail' | 'history') => void
     onRetryMessage?: (localId: string) => void
     autocompleteSuggestions?: (query: string) => Promise<Suggestion[]>
     availableSlashCommands?: readonly SlashCommand[]
@@ -920,8 +914,8 @@ function SessionChatInner(props: SessionChatProps) {
     }, [visibleMessages])
 
     const goalStateSourceMessages = useMemo(
-        () => buildGoalStateMessages(props.messages, props.pendingMessages ?? []),
-        [props.messages, props.pendingMessages]
+        () => buildGoalStateMessages(props.messages),
+        [props.messages]
     )
 
     const normalizedGoalStateMessages: NormalizedMessage[] = useMemo(() => {
@@ -1262,17 +1256,17 @@ function SessionChatInner(props: SessionChatProps) {
                         disabled={sessionInactive}
                         onRefresh={props.onRefresh}
                         onRetryMessage={props.onRetryMessage}
-                        onFlushPending={props.onFlushPending}
-                        onAtBottomChange={props.onAtBottomChange}
-                        isLoadingMessages={props.isLoadingMessages}
+                        onViewModeChange={props.onViewModeChange}
+                        isSyncingTail={props.isSyncingTail}
                         messagesWarning={props.messagesWarning}
                         hasMoreMessages={props.hasMoreMessages}
                         isLoadingMoreMessages={props.isLoadingMoreMessages}
                         onLoadMore={props.onLoadMore}
-                        pendingCount={props.pendingCount}
+                        unseenCount={props.unseenCount}
                         rawMessagesCount={visibleMessages.length}
                         normalizedMessagesCount={normalizedMessages.length}
                         messagesVersion={props.messagesVersion}
+                        historyVersion={props.historyVersion}
                         forceScrollToken={forceScrollToken}
                         outlineOpen={outlineOpen}
                         outlineItems={outlineItems}

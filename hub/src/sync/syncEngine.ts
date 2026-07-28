@@ -8,7 +8,7 @@
  */
 
 import { isKnownFlavor, type LocalResumeTarget, type ResumableSession } from '@hapi/protocol'
-import type { CursorChatStoreStatus, CursorMigrateOutcome, CursorMigrateToAcpRequest, QueuedStateResponse, SlashCommandsResponse } from '@hapi/protocol/apiTypes'
+import type { CursorChatStoreStatus, CursorMigrateOutcome, CursorMigrateToAcpRequest, MessagesResponse, QueuedStateResponse, SlashCommandsResponse } from '@hapi/protocol/apiTypes'
 import type { AgentFlavor, CodexCollaborationMode, DecryptedMessage, PermissionMode, Session, SyncEvent } from '@hapi/protocol/types'
 import { unwrapRoleWrappedRecordEnvelope } from '@hapi/protocol/messages'
 import type { Server } from 'socket.io'
@@ -323,16 +323,14 @@ export class SyncEngine {
 
     getMessagesPage(
         sessionId: string,
-        options: { limit: number; before?: { at: number; seq: number } | null }
-    ): {
-        messages: DecryptedMessage[]
-        page: {
+        options: {
             limit: number
-            nextBeforeSeq: number | null
-            nextBeforeAt: number | null
-            hasMore: boolean
+            before?: { at: number; seq: number } | null
+            after?: { at: number; seq: number } | null
+            until?: { at: number; seq: number } | null
+            epoch?: number | null
         }
-    } {
+    ): MessagesResponse {
         return this.messageService.getMessagesPage(sessionId, options)
     }
 

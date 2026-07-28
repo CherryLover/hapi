@@ -29,11 +29,12 @@ export { ScratchlistStore } from './scratchlistStore'
 export { SessionStore } from './sessionStore'
 export { UserStore } from './userStore'
 
-const SCHEMA_VERSION: number = 12
+const SCHEMA_VERSION: number = 13
 const REQUIRED_TABLES = [
     'sessions',
     'machines',
     'messages',
+    'message_epochs',
     'users',
     'push_subscriptions',
     'fcm_devices',
@@ -138,6 +139,7 @@ export class Store {
             9: () => this.migrateFromV9ToV10(),
             10: () => this.migrateFromV10ToV11(),
             11: () => this.migrateFromV11ToV12(),
+            12: () => this.migrateFromV12ToV13(),
         })
 
         if (currentVersion === 0) {
@@ -244,6 +246,12 @@ export class Store {
             CREATE INDEX IF NOT EXISTS idx_messages_scheduled_pending
                 ON messages(scheduled_at)
                 WHERE scheduled_at IS NOT NULL AND invoked_at IS NULL;
+
+            CREATE TABLE IF NOT EXISTS message_epochs (
+                session_id TEXT PRIMARY KEY,
+                epoch INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+            );
 
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -516,6 +524,16 @@ export class Store {
             );
             CREATE INDEX IF NOT EXISTS idx_session_scratchlist_session_created
                 ON session_scratchlist(session_id, created_at DESC);
+        `)
+    }
+
+    private migrateFromV12ToV13(): void {
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS message_epochs (
+                session_id TEXT PRIMARY KEY,
+                epoch INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+            )
         `)
     }
 
