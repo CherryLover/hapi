@@ -1385,15 +1385,6 @@ export function HappyThread(props: {
             loadOlderMessagesPreservingScroll: loadOlderFromConsumer
         }}>
             <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col relative">
-                {props.isSyncingTail && props.rawMessagesCount > 0 ? (
-                    <div
-                        role="status"
-                        className="pointer-events-none absolute right-3 top-3 z-20 flex items-center gap-1.5 rounded-full border border-[var(--app-border)] bg-[var(--app-bg)]/90 px-2.5 py-1 text-xs text-[var(--app-hint)] shadow-sm backdrop-blur"
-                    >
-                        <Spinner size="sm" label={null} className="text-current" />
-                        <span>{t('misc.loadingMessages')}</span>
-                    </div>
-                ) : null}
                 {!props.isSyncingTail && (
                     props.isLoadingMoreMessages || pullToLoadState !== 'idle'
                 ) ? (
