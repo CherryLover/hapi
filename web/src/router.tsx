@@ -718,6 +718,7 @@ function SessionPage() {
         isLoadingMore: messagesLoadingMore,
         hasMore: messagesHasMore,
         loadMore: loadMoreMessages,
+        cancelLoadMore: cancelLoadMoreMessages,
         refetch: refetchMessages,
         viewMode: messagesViewMode,
         messagesVersion,
@@ -1090,6 +1091,7 @@ function SessionPage() {
             onBack={goBack}
             onRefresh={refreshSelectedSession}
             onLoadMore={loadMoreMessages}
+            onCancelLoadMore={cancelLoadMoreMessages}
             onSend={sendMessage}
             onViewModeChange={setViewMode}
             onRetryMessage={retryMessage}
