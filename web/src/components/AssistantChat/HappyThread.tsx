@@ -461,6 +461,28 @@ export function HappyThread(props: {
         failureCount: 0,
         autoPaused: false
     })
+
+    useLayoutEffect(() => {
+        const viewport = viewportRef.current
+        if (!viewport) return
+
+        const updateScrollbarGutter = () => {
+            const supportsStableBothEdges = typeof CSS !== 'undefined'
+                && typeof CSS.supports === 'function'
+                && CSS.supports('scrollbar-gutter: stable both-edges')
+            const gutter = supportsStableBothEdges
+                ? Math.max(0, (viewport.offsetWidth - viewport.clientWidth) / 2)
+                : 0
+            viewport.style.setProperty('--chat-scroll-gutter-inline', `${gutter}px`)
+        }
+
+        updateScrollbarGutter()
+        if (typeof ResizeObserver === 'undefined') return
+
+        const observer = new ResizeObserver(updateScrollbarGutter)
+        observer.observe(viewport)
+        return () => observer.disconnect()
+    }, [])
     const requestOlderRef = useRef<(source: HistoryLoadSource) => Promise<OlderHistoryLoadResult>>(
         () => Promise.resolve('transient-stop')
     )
@@ -1414,10 +1436,10 @@ export function HappyThread(props: {
                 >
                     <div
                         ref={viewportRef}
-                        className="app-scroll-y min-h-0 flex-1 overflow-x-hidden"
+                        className="app-scroll-y chat-scroll-y min-h-0 flex-1 overflow-x-hidden"
                         tabIndex={0}
                     >
-                        <div ref={contentRef} className="mx-auto w-full max-w-content min-w-0 p-3">
+                        <div ref={contentRef} className="chat-scroll-content mx-auto w-full max-w-content min-w-0 p-3">
                             <div ref={topSentinelRef} className="h-px w-full" aria-hidden="true" />
                             {showSkeleton ? (
                                 <MessageSkeleton />
