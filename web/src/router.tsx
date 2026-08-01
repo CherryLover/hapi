@@ -175,6 +175,12 @@ function SessionsPage() {
         }
         return byId
     }, [machines])
+    // Workspace browsing is opt-in per runner (`--workspace-root`); only show
+    // browse affordances when at least one machine reported roots.
+    const canBrowse = useMemo(
+        () => machines.some(m => (m.metadata?.workspaceRoots?.length ?? 0) > 0),
+        [machines]
+    )
     const sessionMatch = matchRoute({ to: '/sessions/$sessionId', fuzzy: true })
     const selectedSessionId = sessionMatch && sessionMatch.sessionId !== 'new' ? sessionMatch.sessionId : null
     const selectedSession = useMemo(
@@ -220,20 +226,22 @@ function SessionsPage() {
                         })}
                         onNewSession={() => navigate({ to: '/sessions/new' })}
                         onNewSessionInDirectory={handleNewSessionInDirectory}
-                        onBrowse={() => navigate({ to: '/browse' })}
+                        onBrowse={canBrowse ? () => navigate({ to: '/browse' }) : undefined}
                         onRefresh={handleRefresh}
                         isLoading={isLoading}
                         renderHeader={false}
                         headerActions={(
                             <div className="flex items-center gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => navigate({ to: '/browse' })}
-                                    className="p-1.5 rounded-full text-[var(--app-hint)] hover:text-[var(--app-fg)] hover:bg-[var(--app-subtle-bg)] transition-colors"
-                                    title={t('browse.nav')}
-                                >
-                                    <FolderOpenIcon className="h-5 w-5" />
-                                </button>
+                                {canBrowse && (
+                                    <button
+                                        type="button"
+                                        onClick={() => navigate({ to: '/browse' })}
+                                        className="p-1.5 rounded-full text-[var(--app-hint)] hover:text-[var(--app-fg)] hover:bg-[var(--app-subtle-bg)] transition-colors"
+                                        title={t('browse.nav')}
+                                    >
+                                        <FolderOpenIcon className="h-5 w-5" />
+                                    </button>
+                                )}
                                 <button
                                     type="button"
                                     onClick={() => navigate({ to: '/settings' })}
