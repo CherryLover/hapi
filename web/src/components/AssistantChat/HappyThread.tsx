@@ -52,6 +52,7 @@ type ShareTurnState = {
     id: number
     snapshots: ShareTurnSnapshot[]
     title: string
+    sourceContentWidth: number | null
 } | null
 
 type ShareTurnSnapshot = {
@@ -1333,6 +1334,9 @@ export function HappyThread(props: {
     ) => {
         const content = contentRef.current
         if (!content) return
+        const messageContainer = content.querySelector<HTMLElement>('.happy-thread-messages')
+        const sourceContentWidth = messageContainer?.getBoundingClientRect().width
+            ?? content.getBoundingClientRect().width
 
         let target: HTMLElement | null = typeof messageTarget === 'string'
             ? document.getElementById(messageTarget)
@@ -1345,6 +1349,7 @@ export function HappyThread(props: {
                 id: ++shareTurnIdRef.current,
                 snapshots: fallbackSnapshot ? [fallbackSnapshot] : [],
                 title: props.metadata?.summary?.text ?? props.metadata?.name ?? props.metadata?.path ?? props.sessionId.slice(0, 8),
+                sourceContentWidth: sourceContentWidth > 0 ? sourceContentWidth : null,
             })
             return
         }
@@ -1388,6 +1393,7 @@ export function HappyThread(props: {
             id: ++shareTurnIdRef.current,
             snapshots: completeSnapshots,
             title: props.metadata?.summary?.text ?? props.metadata?.name ?? props.metadata?.path ?? props.sessionId.slice(0, 8),
+            sourceContentWidth: sourceContentWidth > 0 ? sourceContentWidth : null,
         })
     }, [props.metadata, props.sessionId])
 
@@ -1500,6 +1506,7 @@ export function HappyThread(props: {
                     showFastBadge={props.session.metadata?.flavor === 'codex' && isFastServiceTier(props.session.serviceTier)}
                     worktreeBranch={props.session.metadata?.worktree?.branch ?? null}
                     sourceSnapshots={shareTurn?.snapshots ?? []}
+                    sourceContentWidth={shareTurn?.sourceContentWidth ?? null}
                     onClose={() => setShareTurn(null)}
                 />
             </ThreadPrimitive.Root>
