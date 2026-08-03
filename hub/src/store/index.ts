@@ -4,6 +4,8 @@ import { dirname } from 'node:path'
 
 import { MachineStore } from './machineStore'
 import { MessageStore } from './messageStore'
+import { addMessage } from './messages'
+import type { StoredMessage } from './types'
 import { PushStore } from './pushStore'
 import { FcmStore } from './fcmStore'
 import { ScratchlistStore } from './scratchlistStore'
@@ -140,6 +142,101 @@ export class Store {
             }
 
             return session.updatedAt
+        })()
+    }
+
+    /** Resolve a durable OpenCode clear reservation and insert in one SQLite transaction. */
+    addMessageForCurrentSession(
+        sessionId: string,
+        content: unknown,
+        localId?: string,
+        scheduledAt?: number | null
+    ): { sessionId: string; message: StoredMessage } {
+        return this.db.transaction(() => {
+            const row = this.db.prepare('SELECT namespace, metadata FROM sessions WHERE id = ?').get(sessionId) as { namespace: string; metadata: string | null } | undefined
+            if (!row) throw new Error('Message source session not found')
+            let targetSessionId = sessionId
+            if (row?.metadata) {
+                const metadata = JSON.parse(row.metadata) as { opencodeClearOperation?: { replacementSessionId?: string; state?: string }, supersededBySessionId?: string }
+                targetSessionId = metadata.supersededBySessionId
+                    ?? (metadata.opencodeClearOperation?.state !== 'aborted'
+                        ? metadata.opencodeClearOperation?.replacementSessionId
+                        : undefined)
+                    ?? sessionId
+            }
+            if (targetSessionId !== sessionId) {
+                const target = this.db.prepare('SELECT 1 FROM sessions WHERE id = ? AND namespace = ?')
+                    .get(targetSessionId, row.namespace)
+                if (!target) throw new Error('OpenCode clear redirect target is unavailable in the source namespace')
+            }
+            return { sessionId: targetSessionId, message: addMessage(this.db, targetSessionId, content, localId, scheduledAt) }
+        })()
+    }
+
+    /** Durable delivery gate for a preallocated replacement owned by an unfinished clear. */
+    isOpenCodeClearDeliveryGated(sessionId: string): boolean {
+        const target = this.db.prepare('SELECT namespace FROM sessions WHERE id = ?')
+            .get(sessionId) as { namespace: string } | undefined
+        if (!target) return false
+        const rows = this.db.prepare('SELECT metadata FROM sessions WHERE namespace = ? AND metadata IS NOT NULL')
+            .all(target.namespace) as Array<{ metadata: string }>
+        return rows.some((row) => {
+            try {
+                const operation = (JSON.parse(row.metadata) as {
+                    opencodeClearOperation?: { replacementSessionId?: string; state?: string }
+                }).opencodeClearOperation
+                return operation?.replacementSessionId === sessionId
+                    && operation.state !== 'completed'
+                    && operation.state !== 'aborted'
+            } catch {
+                return false
+            }
+        })
+    }
+
+    abortOpenCodeClearOperation(
+        sessionId: string,
+        replacementSessionId: string,
+        metadata: unknown,
+        expectedVersion: number,
+        namespace: string,
+        expected?: { replacementSessionId: string; state: string; requireInactive?: boolean }
+    ) {
+        return this.db.transaction(() => {
+            const current = this.sessions.getSessionByNamespace(sessionId, namespace)
+            const operation = current?.metadata && typeof current.metadata === 'object'
+                ? (current.metadata as { opencodeClearOperation?: { replacementSessionId?: string; state?: string } }).opencodeClearOperation
+                : undefined
+            if (expected && (!current
+                || (expected.requireInactive === true && current.active)
+                || operation?.replacementSessionId !== expected.replacementSessionId
+                || operation.state !== expected.state)) {
+                return { result: 'version-mismatch' as const }
+            }
+            const result = this.sessions.updateSessionMetadata(sessionId, metadata, expectedVersion, namespace, { touchUpdatedAt: false })
+            if (result.result === 'success') this.messages.moveUninvokedMessages(replacementSessionId, sessionId)
+            return result
+        })()
+    }
+
+    transitionOpenCodeClearOperation(
+        sessionId: string,
+        metadata: unknown,
+        expectedVersion: number,
+        namespace: string,
+        expected: { replacementSessionId: string; state: string }
+    ) {
+        return this.db.transaction(() => {
+            const current = this.sessions.getSessionByNamespace(sessionId, namespace)
+            const operation = current?.metadata && typeof current.metadata === 'object'
+                ? (current.metadata as { opencodeClearOperation?: { replacementSessionId?: string; state?: string } }).opencodeClearOperation
+                : undefined
+            if (!current
+                || operation?.replacementSessionId !== expected.replacementSessionId
+                || operation.state !== expected.state) {
+                return { result: 'version-mismatch' as const }
+            }
+            return this.sessions.updateSessionMetadata(sessionId, metadata, expectedVersion, namespace, { touchUpdatedAt: false })
         })()
     }
 

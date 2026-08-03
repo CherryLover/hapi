@@ -23,7 +23,10 @@ import {
     minFutureScheduledAtBySessionIds,
     countMessages,
     markMessagesInvoked,
+    markUninvokedImmediateMessages,
     mergeSessionMessages,
+    moveUninvokedScheduledMessages,
+    moveUninvokedMessages,
     copyMessageToSession as copyStoredMessageToSession,
     copyMessagesToSession as copyStoredMessagesToSession,
     getAllMessages,
@@ -152,6 +155,18 @@ export class MessageStore {
 
     markMessagesInvoked(sessionId: string, localIds: string[], invokedAt: number): number {
         return markMessagesInvoked(this.db, sessionId, localIds, invokedAt)
+    }
+
+    markUninvokedImmediateMessages(sessionId: string, invokedAt: number): string[] {
+        return markUninvokedImmediateMessages(this.db, sessionId, invokedAt)
+    }
+
+    moveUninvokedScheduledMessages(fromSessionId: string, toSessionId: string): number {
+        return moveUninvokedScheduledMessages(this.db, fromSessionId, toSessionId)
+    }
+
+    moveUninvokedMessages(fromSessionId: string, toSessionId: string): number {
+        return moveUninvokedMessages(this.db, fromSessionId, toSessionId)
     }
 
     mergeSessionMessages(fromSessionId: string, toSessionId: string): { moved: number; oldMaxSeq: number; newMaxSeq: number } {
