@@ -26,6 +26,7 @@ import type {
     SessionsResponse
 } from '@/types/api'
 import type {
+    AgyModelsResponse,
     CodexModelsResponse,
     CursorMigrateOutcome,
     CursorMigrateToAcpRequest,
@@ -701,7 +702,8 @@ export class ApiClient {
         permissionMode?: PermissionMode,
         serviceTier?: 'fast' | 'standard',
         collaborationMode?: CodexCollaborationMode,
-        copilotAgentMode?: CopilotAgentMode
+        copilotAgentMode?: CopilotAgentMode,
+        startingMode?: 'remote' | 'pty'
     ): Promise<SpawnResponse> {
         return await this.request<SpawnResponse>(`/api/machines/${encodeURIComponent(machineId)}/spawn`, {
             method: 'POST',
@@ -717,9 +719,16 @@ export class ApiClient {
                 permissionMode,
                 serviceTier,
                 collaborationMode,
-                copilotAgentMode
+                copilotAgentMode,
+                startingMode
             })
         })
+    }
+
+    async getMachineAgyModels(machineId: string): Promise<AgyModelsResponse> {
+        return await this.request<AgyModelsResponse>(
+            `/api/machines/${encodeURIComponent(machineId)}/agy-models`
+        )
     }
 
     async getMachineCodexModels(machineId: string): Promise<CodexModelsResponse> {

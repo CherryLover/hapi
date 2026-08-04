@@ -1469,7 +1469,9 @@ export function buildCliArgs(
             ? 'opencode'
             : agent === 'pi'
               ? 'pi'
-              : 'claude';
+              : agent === 'agy'
+                ? 'agy'
+                : 'claude';
   const args = [agentCommand];
   if (options.resumeSessionId) {
     if (agent === 'codex') {
@@ -1483,11 +1485,16 @@ export function buildCliArgs(
       args.push('--resume', options.resumeSessionId);
     }
   }
+  // agy PTY reuses the existing hub row directly on reopen/resume.
+  if (options.existingSessionId && agent === 'agy') {
+    args.push('--hapi-session-id', options.existingSessionId);
+  }
   // Message-level Fork current for Claude: must follow --resume.
   if (options.forkSession && agentCommand === 'claude') {
     args.push('--fork-session');
   }
-  args.push('--hapi-starting-mode', 'remote', '--started-by', 'runner');
+  const startingMode = options.startingMode || 'remote';
+  args.push('--hapi-starting-mode', startingMode, '--started-by', 'runner');
   // Codex, Cursor ACP, OpenCode, Pi native resume, and Claude message-level
   // forks reuse the original HAPI row via --existing-session-id.
   if (agent === 'codex' || agent === 'cursor' || agent === 'pi'

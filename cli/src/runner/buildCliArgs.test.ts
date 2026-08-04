@@ -147,16 +147,17 @@ describe('buildCliArgs', () => {
         expect(args).not.toContain('--resume')
     })
 
-    it('does not pass existing session id flag to agents that do not reuse HAPI rows', () => {
-        const args = buildCliArgs('claude', {
+    it('passes the existing HAPI row id when resuming OpenCode', () => {
+        const args = buildCliArgs('opencode', {
             directory: '/tmp',
-            resumeSessionId: 'claude-session-1',
+            resumeSessionId: 'opencode-session-1',
             existingSessionId: 'hapi-session-1',
         })
         expect(args).toContain('--resume')
-        expect(args).toContain('claude-session-1')
-        expect(args).not.toContain('--existing-session-id')
-        expect(args).not.toContain('hapi-session-1')
+        expect(args).toContain('opencode-session-1')
+        expect(args).toContain('--existing-session-id')
+        expect(args).toContain('hapi-session-1')
+        expect(args).not.toContain('--hapi-session-id')
     })
 
     it('passes --existing-session-id for cursor resume when sessionId is set (#991)', () => {
@@ -305,6 +306,25 @@ describe('buildCliArgs', () => {
             '--permission-mode', 'plan'
         ])
     })
+    it('emits --hapi-session-id for agy reopen', () => {
+        const args = buildCliArgs('agy', {
+            directory: '/tmp',
+            existingSessionId: 'existing-hub-id',
+            startingMode: 'pty',
+        })
+        expect(args).toContain('--hapi-session-id')
+        expect(args[args.indexOf('--hapi-session-id') + 1]).toBe('existing-hub-id')
+    })
+
+    it('does not emit --hapi-session-id for a non-pty flavor', () => {
+        const args = buildCliArgs('opencode', {
+            directory: '/tmp',
+            existingSessionId: 'existing-hub-id',
+            startingMode: 'pty',
+        })
+        expect(args).not.toContain('--hapi-session-id')
+    })
+
 })
 
 

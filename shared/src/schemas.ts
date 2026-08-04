@@ -70,6 +70,7 @@ export const MetadataSchema = z.object({
     geminiSessionId: z.string().optional(),
     opencodeSessionId: z.string().optional(),
     grokSessionId: z.string().optional(),
+    agySessionId: z.string().optional(),
     cursorSessionId: z.string().optional(),
     cursorSessionProtocol: z.enum(['acp', 'stream-json']).optional(),
     // Drives the web `CursorMigrationBanner`:
@@ -94,6 +95,11 @@ export const MetadataSchema = z.object({
             archiveReason: z.string().optional(),
         }).optional(),
     }).optional(),
+    ptyResumeAttempt: z.object({
+        state: z.enum(['resuming', 'quarantined']),
+        machineId: z.string(),
+        startedAt: z.number(),
+    }).optional(),
     tools: z.array(z.string()).optional(),
     slashCommands: z.array(z.string()).optional(),
     homeDir: z.string().optional(),
@@ -116,6 +122,9 @@ export const MetadataSchema = z.object({
     preferredPermissionMode: PermissionModeSchema.optional(),
     preferredCopilotAgentMode: CopilotAgentModeSchema.optional(),
     flavor: z.string().nullish(),
+    // Launch mode, surfaced so the web can show the agent-terminal toggle only
+    // for PTY sessions (a 'remote'/SDK session has no agent PTY to view).
+    startingMode: z.enum(['local', 'remote', 'pty']).nullish(),
     capabilities: SessionCapabilitiesSchema.optional(),
     conversationHistoryPoints: z.record(z.string(), z.literal(true)).optional(),
     // Native locators for historical fork/rewind (e.g. Grok prompt indexes).
@@ -168,6 +177,10 @@ export type AgentStateCompletedRequest = z.infer<typeof AgentStateCompletedReque
 
 export const AgentStateSchema = z.object({
     controlledByUser: z.boolean().nullish(),
+    // The mode the session was started in. Persisted so reopen/resume can
+    // re-spawn in the same mode — notably 'pty', which has no agent terminal
+    // otherwise (a reopened PTY session would silently fall back to 'remote').
+    startingMode: z.enum(['local', 'remote', 'pty']).nullish(),
     requests: z.record(z.string(), AgentStateRequestSchema).nullish(),
     completedRequests: z.record(z.string(), AgentStateCompletedRequestSchema).nullish()
 })

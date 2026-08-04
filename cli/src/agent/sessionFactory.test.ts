@@ -153,6 +153,11 @@ describe('bootstrapExistingSession', () => {
                 machineId: 'machine-1',
                 startedAt: 123,
             },
+            ptyResumeAttempt: {
+                state: 'quarantined',
+                machineId: 'machine-1',
+                startedAt: 456,
+            },
             summary: {
                 text: 'resume me',
                 updatedAt: 100
@@ -191,6 +196,11 @@ describe('bootstrapExistingSession', () => {
                 state: 'resuming',
                 machineId: 'machine-1',
                 startedAt: 123,
+            },
+            ptyResumeAttempt: {
+                state: 'quarantined',
+                machineId: 'machine-1',
+                startedAt: 456,
             },
             summary: {
                 text: 'resume me',

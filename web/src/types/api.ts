@@ -11,6 +11,8 @@ import type {
 } from '@hapi/protocol/types'
 
 export type {
+    AgyModelsResponse,
+    AgyModelSummary,
     CodexModelsResponse,
     CodexModelSummary,
     CommandResponse,
@@ -86,6 +88,7 @@ export type SessionMetadataSummary = {
     machineId?: string
     tools?: string[]
     flavor?: string | null
+    startingMode?: 'local' | 'remote' | 'pty' | null
     capabilities?: {
         terminal?: boolean
         conversationHistory?: {
