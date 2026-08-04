@@ -38,7 +38,7 @@ The voice assistant lets you:
 - **Approve permissions by voice** - Say "yes" or "no" to approve or deny permission requests
 - **Monitor progress** - Receive spoken updates when tasks complete or errors occur
 
-The assistant bridges voice communication with your active coding agent (Claude Code, Codex, Cursor Agent, Grok Build, or OpenCode), relaying your requests and summarizing responses in natural speech.
+The assistant bridges voice communication with your active coding session, whatever agent flavor it runs. It relays your requests to the agent and summarizes responses in natural speech.
 
 ## Prerequisites
 
@@ -130,6 +130,7 @@ Everything user-facing lives under **Settings → Voice**:
 
 - **Persona & instructions** - Rename/rebrand the assistant and shape its character and speaking style (preset or custom text)
 - **How it sounds** - ElevenLabs tuning sliders (stability, style, speed, similarity boost, speaker boost) and Gemini's affective dialog option
+- **Voice diagnostics** - Check the composed system prompt size against per-backend wire limits, see truncation warnings and the last voice session's context notice, and preview the read-only platform rules
 
 ## How It Works
 
