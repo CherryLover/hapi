@@ -19,12 +19,14 @@ import {
     useRef,
     useState
 } from 'react'
-import { isRichComposerMentionsEnabled } from '@/lib/composerSegments'
+import { isRichComposerMentionsEnabled, resolveComposerPlaceholderKey } from '@/lib/composerSegments'
 import type { SessionMentionResolveResult } from '@/components/AssistantChat/RichComposerInput'
 import {
     RichComposerInput,
     type RichComposerInputHandle,
 } from '@/components/AssistantChat/RichComposerInput'
+import { useFue } from '@/lib/use-fue'
+import { FueCallout, FueDot } from '@/components/Fue'
 import type { AgentState, CodexCollaborationMode, PermissionMode, PiModelSummary } from '@/types/api'
 import type { Suggestion } from '@/hooks/useActiveSuggestions'
 import type { ConversationStatus } from '@/realtime/types'
@@ -522,6 +524,7 @@ export function HappyComposer(props: {
 
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const richInputRef = useRef<RichComposerInputHandle>(null)
+    const richComposerFueAnchorRef = useRef<HTMLDivElement>(null)
     // `composer.text === ''` alone is not enough to identify the empty state
     // created by a send. A user can type and delete a fresh draft before the
     // failed mutation reports back. Keep monotonic interaction generations so
@@ -538,7 +541,20 @@ export function HappyComposer(props: {
     // Kill-switch only (?richMentions=0 / localStorage=0 / VITE=false). Mount-time
     // read — hard reload required, so no per-keystroke localStorage/URL parse.
     const [richMentionsEnabled] = useState(() => isRichComposerMentionsEnabled())
+    const {
+        status: richComposerFueStatus,
+        engage: engageRichComposerFue,
+        dismiss: dismissRichComposerFue,
+    } = useFue('rich-composer-mentions')
     const prevControlledByUser = useRef(controlledByUser)
+
+    // Composer itself is the affordance: open the FUE callout once the rich
+    // path is live. Relying on DOM focus alone is flaky (programmatic
+    // autofocus / Playwright headless often skip the focus event).
+    useEffect(() => {
+        if (!richMentionsEnabled) return
+        engageRichComposerFue()
+    }, [richMentionsEnabled, engageRichComposerFue])
 
     const recordUserEdit = useCallback(() => {
         userEditGenerationRef.current += 1
@@ -1178,6 +1194,14 @@ export function HappyComposer(props: {
         }
 
         if (key === 'Escape') {
+            // FUE callout also listens on window; dismiss it first so Escape
+            // does not also abort a running thread or collapse the editor.
+            if (richComposerFueStatus === 'engaging') {
+                e.preventDefault()
+                e.stopPropagation()
+                dismissRichComposerFue()
+                return
+            }
             const action = getComposerEscapeAction({
                 hasSuggestions: suggestions.length > 0,
                 threadIsRunning,
@@ -1217,6 +1241,8 @@ export function HappyComposer(props: {
         haptic,
         composerEnterBehavior,
         richMentionsEnabled,
+        richComposerFueStatus,
+        dismissRichComposerFue,
         flushAndSend,
         canQueueSend,
         isExpanded,
@@ -2058,20 +2084,36 @@ export function HappyComposer(props: {
                             isExpanded ? 'min-h-0 flex-1 items-stretch' : 'items-center'
                         }`}>
                             {richMentionsEnabled ? (
-                                <RichComposerInput
-                                    ref={richInputRef}
-                                    value={composerText}
-                                    autoFocus={!controlsDisabled && !isTouch}
-                                    placeholder={showContinueHint ? t('misc.typeMessage') : t('misc.typeAMessage')}
-                                    disabled={controlsDisabled}
-                                    onValueChange={handleRichValueChange}
-                                    onMirrorChange={handleRichMirrorChange}
-                                    onKeyDown={handleKeyDown}
-                                    onPaste={handlePaste}
-                                    resolveSessionMentionTooltip={resolveSessionMentionTooltip}
-                                    onEdit={handleRichEdit}
-                                    className={editorClassName}
-                                />
+                                <div
+                                    ref={richComposerFueAnchorRef}
+                                    className="relative flex min-w-0 flex-1"
+                                    data-testid="rich-composer-fue-anchor"
+                                >
+                                    <RichComposerInput
+                                        ref={richInputRef}
+                                        value={composerText}
+                                        autoFocus={!controlsDisabled && !isTouch}
+                                        placeholder={t(resolveComposerPlaceholderKey({
+                                            richMentionsEnabled: true,
+                                            showContinueHint,
+                                        }))}
+                                        disabled={controlsDisabled}
+                                        onValueChange={handleRichValueChange}
+                                        onMirrorChange={handleRichMirrorChange}
+                                        onKeyDown={handleKeyDown}
+                                        onPaste={handlePaste}
+                                        onFocus={() => engageRichComposerFue()}
+                                        resolveSessionMentionTooltip={resolveSessionMentionTooltip}
+                                        onEdit={handleRichEdit}
+                                        className={editorClassName}
+                                    />
+                                    {richComposerFueStatus !== 'acknowledged' ? (
+                                        <FueDot
+                                            pulsing={richComposerFueStatus === 'unseen'}
+                                            ariaLabel={t('fue.newFeatureDot')}
+                                        />
+                                    ) : null}
+                                </div>
                             ) : isExpanded ? (
                                 <ComposerPrimitive.Input
                                     asChild
@@ -2085,7 +2127,10 @@ export function HappyComposer(props: {
                                     onPaste={handlePaste}
                                 >
                                     <textarea
-                                        placeholder={showContinueHint ? t('misc.typeMessage') : t('misc.typeAMessage')}
+                                        placeholder={t(resolveComposerPlaceholderKey({
+                                            richMentionsEnabled: false,
+                                            showContinueHint,
+                                        }))}
                                         disabled={controlsDisabled}
                                         className="h-full min-h-0 flex-1 resize-none overflow-y-auto bg-transparent text-base leading-snug text-[var(--app-fg)] placeholder-[var(--app-hint)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                                     />
@@ -2094,7 +2139,10 @@ export function HappyComposer(props: {
                                 <ComposerPrimitive.Input
                                     ref={textareaRef}
                                     autoFocus={!controlsDisabled && !isTouch}
-                                    placeholder={showContinueHint ? t('misc.typeMessage') : t('misc.typeAMessage')}
+                                    placeholder={t(resolveComposerPlaceholderKey({
+                                        richMentionsEnabled: false,
+                                        showContinueHint,
+                                    }))}
                                     disabled={controlsDisabled}
                                     maxRows={5}
                                     submitOnEnter={false}
@@ -2107,6 +2155,17 @@ export function HappyComposer(props: {
                                 />
                             )}
                         </div>
+                        {richMentionsEnabled && richComposerFueStatus === 'engaging' ? (
+                            <FueCallout
+                                title={t('richComposer.fueTitle')}
+                                body={t('richComposer.fueBody')}
+                                onDismiss={dismissRichComposerFue}
+                                dismissLabel={t('fue.gotIt')}
+                                closeAriaLabel={t('fue.closeAriaLabel')}
+                                anchorRef={richComposerFueAnchorRef}
+                                width={288}
+                            />
+                        ) : null}
 
                         <ComposerButtons
                             canSend={canSend}
