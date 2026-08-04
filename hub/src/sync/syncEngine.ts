@@ -8,7 +8,7 @@
  */
 
 import { isKnownFlavor, type LocalResumeTarget, type ResumableSession, type SessionEndReason } from '@hapi/protocol'
-import type { CursorChatStoreStatus, CursorMigrateOutcome, CursorMigrateToAcpRequest, MessagesResponse, QueuedStateResponse, SlashCommandsResponse } from '@hapi/protocol/apiTypes'
+import type { CursorChatStoreStatus, CursorMigrateOutcome, CursorMigrateToAcpRequest, MessageDeliveryMode, MessagesResponse, QueuedStateResponse, SlashCommandsResponse } from '@hapi/protocol/apiTypes'
 import type { AgentFlavor, CodexCollaborationMode, CopilotAgentMode, DecryptedMessage, PermissionMode, Session, SyncEvent } from '@hapi/protocol/types'
 import { unwrapRoleWrappedRecordEnvelope } from '@hapi/protocol/messages'
 import type { Server } from 'socket.io'
@@ -918,6 +918,7 @@ async uploadScratchlistAttachment(
             }>
             sentFrom?: 'telegram-bot' | 'webapp'
             scheduledAt?: number | null
+            deliveryMode?: MessageDeliveryMode
         }
     ): Promise<void> {
         if (this.historyActionsInFlight.has(sessionId)) {
@@ -1022,21 +1023,25 @@ async uploadScratchlistAttachment(
     }
 
     /**
-     * Grok RPC already created `expectedNativeSessionId`. Wait until the child
-     * binds that exact id — a different id means load failed and fell back.
+     * A native fork may be created before its runner child has loaded it. Wait
+     * for the exact persisted native id; Pi additionally requires its
+     * validated `session-ready` event before the fork is visible to callers.
      */
-    private async waitForGrokForkBound(
+    private async waitForExactNativeForkBound(
         childId: string,
         expectedNativeSessionId: string,
+        metadataKey: 'grokSessionId' | 'piSessionId',
+        requireSessionReady: boolean,
         timeoutMs: number = 60_000
     ): Promise<boolean> {
         const startedAt = Date.now()
         while (Date.now() - startedAt < timeoutMs) {
             this.sessionCache.refreshSession(childId)
             const child = this.sessionCache.getSession(childId)
-            const boundId = child?.metadata?.grokSessionId
+            const boundId = child?.metadata?.[metadataKey]
             if (typeof boundId === 'string' && boundId.length > 0) {
-                return boundId === expectedNativeSessionId
+                if (boundId !== expectedNativeSessionId) return false
+                if (!requireSessionReady || this.sessionReadyIds.has(childId)) return true
             }
             if (child && !child.active && Date.now() - startedAt > 5_000) {
                 return false
@@ -1101,6 +1106,21 @@ async uploadScratchlistAttachment(
                         nextMetadata.conversationHistoryTurns = nextTurns
                     } else {
                         delete nextMetadata.conversationHistoryTurns
+                    }
+                }
+            }
+
+            const entryIds = session.metadata.conversationHistoryEntryIds
+            if (entryIds) {
+                const nextEntryIds = Object.fromEntries(
+                    Object.entries(entryIds).filter(([localId]) => remainingLocalIds.has(localId))
+                )
+                if (Object.keys(nextEntryIds).length !== Object.keys(entryIds).length) {
+                    changed = true
+                    if (Object.keys(nextEntryIds).length > 0) {
+                        nextMetadata.conversationHistoryEntryIds = nextEntryIds
+                    } else {
+                        delete nextMetadata.conversationHistoryEntryIds
                     }
                 }
             }
@@ -1171,7 +1191,7 @@ async uploadScratchlistAttachment(
         if (!access.ok) {
             return { type: 'error', message: access.reason === 'not-found' ? 'Session not found' : 'Access denied' }
         }
-        const source = access.session
+        let source = access.session
         try {
             this.assertConversationHistoryIdle(source)
         } catch (error) {
@@ -1212,6 +1232,14 @@ async uploadScratchlistAttachment(
             return { type: 'error', message: 'Native fork did not return a session id' }
         }
 
+        // Native fork RPC can race CLI metadata/transcript updates. Construct
+        // the child only from a fresh source snapshot, never the pre-RPC row.
+        const refreshedSource = this.sessionCache.refreshSession(sessionId)
+        if (!refreshedSource || refreshedSource.namespace !== namespace) {
+            return { type: 'error', message: 'Source session disappeared after native fork' }
+        }
+        source = refreshedSource
+
         const flavor = this.resolveFlavor(source)
         const childId = randomUUID()
         let prefix
@@ -1242,16 +1270,28 @@ async uploadScratchlistAttachment(
             conversationHistoryTurns: Object.fromEntries(
                 Object.entries(source.metadata?.conversationHistoryTurns ?? {})
                     .filter(([localId]) => copiedLocalIds.has(localId))
+            ),
+            conversationHistoryEntryIds: Object.fromEntries(
+                Object.entries(source.metadata?.conversationHistoryEntryIds ?? {})
+                    .filter(([localId]) => copiedLocalIds.has(localId))
             )
         }
         if (flavor === 'codex') {
             childMetadata.codexSessionId = rpcResult.nativeSessionId
         } else if (flavor === 'grok') {
             childMetadata.grokSessionId = rpcResult.nativeSessionId
+        } else if (flavor === 'pi') {
+            childMetadata.piSessionId = rpcResult.nativeSessionId
         } else if (flavor === 'claude') {
             // Child will bind the forked Claude id after --fork-session starts.
             childMetadata.claudeSessionId = rpcResult.forkSession ? undefined : rpcResult.nativeSessionId
         }
+
+        // A Pi native fork already carries the branch's authoritative model and
+        // thinking state. Do not replay the source wrapper's current overrides
+        // onto the child; the resumed child will report its own get_state.
+        const forkModel = flavor === 'pi' ? undefined : source.model ?? undefined
+        const forkEffort = flavor === 'pi' ? undefined : source.effort ?? undefined
 
         let childCreated = false
         let spawnAttempted = false
@@ -1261,8 +1301,8 @@ async uploadScratchlistAttachment(
                 childMetadata,
                 null,
                 namespace,
-                source.model ?? undefined,
-                source.effort ?? undefined,
+                forkModel,
+                forkEffort,
                 source.modelReasoningEffort ?? undefined,
                 childId
             )
@@ -1288,13 +1328,13 @@ async uploadScratchlistAttachment(
                 machineId,
                 directory,
                 flavor,
-                source.model ?? undefined,
+                forkModel,
                 source.modelReasoningEffort ?? undefined,
                 undefined,
                 'simple',
                 undefined,
                 rpcResult.nativeSessionId,
-                source.effort ?? undefined,
+                forkEffort,
                 source.permissionMode,
                 source.serviceTier ?? undefined,
                 childId,
@@ -1322,9 +1362,20 @@ async uploadScratchlistAttachment(
             // session if load fails. Do not report success until the child is
             // bound to the exact forked native id.
             if (flavor === 'grok') {
-                const bound = await this.waitForGrokForkBound(childId, rpcResult.nativeSessionId)
+                const bound = await this.waitForExactNativeForkBound(
+                    childId, rpcResult.nativeSessionId, 'grokSessionId', false
+                )
                 if (!bound) {
                     throw new Error('Grok fork could not load the forked native session')
+                }
+            }
+
+            if (flavor === 'pi') {
+                const bound = await this.waitForExactNativeForkBound(
+                    childId, rpcResult.nativeSessionId, 'piSessionId', true
+                )
+                if (!bound) {
+                    throw new Error('Pi fork could not load the exact native session before ready')
                 }
             }
 
@@ -1417,7 +1468,7 @@ async uploadScratchlistAttachment(
         }
 
         if (rpcResult?.success !== true) {
-            return { type: 'error', message: 'Native rewind failed' }
+            return { type: 'error', message: rpcResult?.error ?? 'Native rewind failed' }
         }
 
         try {
