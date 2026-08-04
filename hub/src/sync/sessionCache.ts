@@ -195,6 +195,7 @@ export class SessionCache {
             agentStateVersion: stored.agentStateVersion,
             thinking: existing?.thinking ?? false,
             thinkingAt: existing?.thinkingAt ?? 0,
+            activeTurnStartedAt: existing?.activeTurnStartedAt ?? null,
             backgroundTaskCount: existing?.backgroundTaskCount ?? 0,
             todos,
             teamState,
@@ -348,6 +349,7 @@ export class SessionCache {
 
         const wasActive = session.active
         const wasThinking = session.thinking
+        const previousActiveTurnStartedAt = session.activeTurnStartedAt
         const previousPermissionMode = session.permissionMode
         const previousModel = session.model
         const previousModelReasoningEffort = session.modelReasoningEffort
@@ -359,11 +361,18 @@ export class SessionCache {
         const requestedThinking = Boolean(payload.thinking)
         const hubNow = Date.now()
         const preserveQueuedThinking = !requestedThinking && pendingThinkingUntil > hubNow
+        const hasUnconsumedPrompt = preserveQueuedThinking
+            && this.store.messages.getImmediateQueuedLocalMessages(session.id).length > 0
 
         session.active = true
         session.activeAt = Math.max(session.activeAt, t)
         session.thinking = requestedThinking || preserveQueuedThinking
         session.thinkingAt = t
+        if (!requestedThinking && preserveQueuedThinking && hasUnconsumedPrompt) {
+            session.activeTurnStartedAt = hubNow
+        } else if (wasThinking && !session.thinking) {
+            session.activeTurnStartedAt = null
+        }
         if (requestedThinking || pendingThinkingUntil <= hubNow) {
             this.pendingThinkingUntilBySessionId.delete(session.id)
         }
@@ -420,8 +429,10 @@ export class SessionCache {
             || previousServiceTier !== session.serviceTier
             || previousCollaborationMode !== session.collaborationMode
             || previousCopilotAgentMode !== session.copilotAgentMode
+        const turnBoundaryChanged = previousActiveTurnStartedAt !== session.activeTurnStartedAt
         const shouldBroadcast = (!wasActive && session.active)
             || (wasThinking !== session.thinking)
+            || turnBoundaryChanged
             || modeChanged
             || (now - lastBroadcastAt > 10_000)
 
@@ -434,6 +445,7 @@ export class SessionCache {
                     active: true,
                     activeAt: session.activeAt,
                     thinking: session.thinking,
+                    activeTurnStartedAt: session.activeTurnStartedAt,
                     permissionMode: session.permissionMode,
                     model: session.model,
                     modelReasoningEffort: session.modelReasoningEffort,
@@ -462,7 +474,11 @@ export class SessionCache {
         this.pendingThinkingUntilBySessionId.delete(sessionId)
     }
 
-    markMessageQueued(sessionId: string, time: number = Date.now()): void {
+    markMessageQueued(
+        sessionId: string,
+        time: number = Date.now(),
+        activeTurnStartedAt: number = time
+    ): void {
         const session = this.sessions.get(sessionId) ?? this.refreshSession(sessionId)
         if (!session) return
         if (!session.active) return
@@ -473,6 +489,7 @@ export class SessionCache {
 
         session.thinking = true
         session.thinkingAt = nextTime
+        if (!wasThinking) session.activeTurnStartedAt = activeTurnStartedAt
         session.updatedAt = Math.max(session.updatedAt, nextTime)
         this.pendingThinkingUntilBySessionId.set(session.id, nextTime + QUEUED_MESSAGE_THINKING_GRACE_MS)
 
@@ -483,6 +500,7 @@ export class SessionCache {
                 sessionId: session.id,
                 data: {
                     thinking: true,
+                    activeTurnStartedAt: session.activeTurnStartedAt,
                     updatedAt: session.updatedAt
                 } satisfies SessionPatch
             })
@@ -582,13 +600,14 @@ export class SessionCache {
         this.store.sessions.setSessionActive(session.id, false, t, session.namespace)
         session.thinking = false
         session.thinkingAt = t
+        session.activeTurnStartedAt = null
         session.backgroundTaskCount = 0
         this.pendingThinkingUntilBySessionId.delete(session.id)
 
         this.publisher.emit({
             type: 'session-updated',
             sessionId: session.id,
-            data: { active: false, thinking: false, backgroundTaskCount: 0 } satisfies SessionPatch
+            data: { active: false, thinking: false, activeTurnStartedAt: null, backgroundTaskCount: 0 } satisfies SessionPatch
         })
     }
 

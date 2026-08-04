@@ -924,8 +924,8 @@ async uploadScratchlistAttachment(
         if (this.historyActionsInFlight.has(sessionId)) {
             throw new Error('Conversation history action already in progress')
         }
-        const actualSessionId = await this.messageService.sendMessage(sessionId, payload)
-        this.sessionCache.markMessageQueued(actualSessionId)
+        const { actualSessionId, createdAt: activeTurnStartedAt } = await this.messageService.sendMessage(sessionId, payload)
+        this.sessionCache.markMessageQueued(actualSessionId, Date.now(), activeTurnStartedAt)
         this.sessionCache.recordSessionActivity(actualSessionId, Date.now())
     }
 

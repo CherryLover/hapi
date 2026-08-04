@@ -1692,6 +1692,7 @@ function SessionChatInner(props: SessionChatProps) {
                         key={`thread-${props.session.id}`}
                         api={props.api}
                         session={props.session}
+                        serviceTier={effectiveCodexServiceTier}
                         sessionId={props.session.id}
                         metadata={props.session.metadata}
                         disabled={sessionInactive}
